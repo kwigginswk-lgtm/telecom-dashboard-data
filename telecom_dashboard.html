@@ -1,1 +1,62 @@
-
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Telecom Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@3"></script>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5"></script>
+<style>
+body{font-family:Arial;background:#f5f5f5;padding:20px;margin:0}
+.container{max-width:1200px;margin:0 auto;background:white;padding:20px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,.1)}
+h1{color:#333;margin:0 0 5px 0}
+.sub{color:#666;font-size:.9em;margin-bottom:20px}
+button{background:#667eea;color:white;padding:10px 20px;border:none;border-radius:4px;cursor:pointer;margin:5px 5px 5px 0}
+button:hover{background:#5568d3}
+.kpi{display:inline-block;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;padding:15px;margin:10px 10px 10px 0;border-radius:6px;min-width:180px;text-align:center}
+.kpi.pos{background:linear-gradient(135deg,#11998e 0%,#38ef7d 100%)}
+.kpi.neg{background:linear-gradient(135deg,#ff6b6b 0%,#ee5a6f 100%)}
+.kpiv{font-size:1.8em;font-weight:bold}
+.kpil{font-size:.85em}
+.sec{margin:30px 0;background:#fafafa;padding:15px;border-radius:6px}
+.sec h2{font-size:1.1em;color:#333;margin:0 0 15px 0}
+table{width:100%;border-collapse:collapse;font-size:.9em}
+th{background:#667eea;color:white;padding:8px;text-align:left}
+td{padding:6px;border-bottom:1px solid #ddd}
+tr:hover{background:#f9f9f9}
+.num{text-align:right;font-family:monospace}
+.err{background:#ffebee;color:#c62828;padding:15px;border-radius:4px;margin:15px 0}
+#dbg{display:none;background:#f0f0f0;padding:10px;margin:10px 0;max-height:150px;overflow-y:auto;font-size:.75em;font-family:monospace}
+canvas{max-height:250px!important}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>📊 Telecom Dashboard</h1>
+<div class="sub" id="ts">Loading...</div>
+<div>
+<button onclick="location.reload()">🔄 Refresh</button>
+<button onclick="document.getElementById('dbg').style.display=document.getElementById('dbg').style.display==='none'?'block':'none'">🐛 Debug</button>
+</div>
+<div id="dbg"></div>
+<div id="app"><p style="text-align:center;color:#667eea">Loading data...</p></div>
+</div>
+<script>
+const LOG=[];
+const GH='https://raw.githubusercontent.com/kwigginswk-lgtm/telecom-dashboard-data/main';
+const MAP={'10-WKT-KY':'WKT ILEC','10-WKT-TN':'WKT ILEC','14-YORK':'WKT ILEC','21-ILL':'Illinois','22-ILL':'Illinois','25-IRDOF':'Illinois','31-ARD-AL':'ATC ILEC','31-ARD-TN':'ATC ILEC'};
+function log(m){LOG.push(`[${new Date().toLocaleTimeString()}] ${m}`);console.log(m)}
+function dbg(){document.getElementById('dbg').innerHTML=LOG.map(x=>`<div>${x}</div>`).join('')}
+async function get(f){log(`Fetch ${f}`);try{const r=await fetch(`${GH}/${f}?t=${Date.now()}`,{cache:'no-store'});if(!r.ok)throw new Error(`HTTP ${r.status}`);const t=await r.text();const p=Papa.parse(t,{header:true,skipEmptyLines:true});log(`${f}: ${p.data.length} rows`);return p.data}catch(e){log(`ERR ${f}: ${e.message}`);return[]}}
+async function start(){log("Init");const[s,d,g]=await Promise.all([get('telecom_summary.csv'),get('telecom_data_timeline.csv'),get('telecom_growth_metrics.csv')]);if(!s.length){document.getElementById('app').innerHTML='<div class="err">Failed to load data</div>';dbg();return}
+let h='';['TELCORE','BBCORE','VCORE','SCORE'].forEach(sv=>{const v=parseInt(s[0][sv])||0;const c=parseInt(s[0][sv+'_QTR_CHANGE'])||0;const p=(s[0][sv+'_QTR_PCT']||0);const cl=c>=0?'pos':'neg';h+=`<div class="kpi ${cl}"><div class="kpil">${sv}</div><div class="kpiv">${v.toLocaleString()}</div><div class="kpil">${c>=0?'+':''}${c} (${p}%)</div></div>`});
+h+='<div class="sec"><h2>Monthly Growth</h2><canvas id="c1"></canvas></div>';
+const ar={};d.forEach(r=>{const a=MAP[r.Class]||r.Class;if(!ar[a])ar[a]={TELCORE:0,BBCORE:0,VCORE:0,SCORE:0};['TELCORE','BBCORE','VCORE','SCORE'].forEach(sv=>ar[a][sv]+=parseInt(r[sv])||0)});
+h+='<div class="sec"><h2>Daily Totals by Service Area</h2><table><tr><th>Area</th><th class="num">TELCORE</th><th class="num">BBCORE</th><th class="num">VCORE</th><th class="num">SCORE</th><th class="num">Total</th></tr>';
+Object.keys(ar).sort().forEach(a=>{const x=ar[a];const t=Object.values(x).reduce((a,b)=>a+b,0);h+=`<tr><td>${a}</td><td class="num">${x.TELCORE}</td><td class="num">${x.BBCORE}</td><td class="num">${x.VCORE}</td><td class="num">${x.SCORE}</td><td class="num"><b>${t}</b></td></tr>`});
+h+='</table></div>';document.getElementById('app').innerHTML=h;document.getElementById('ts').textContent=`Updated: ${new Date().toLocaleString()}`;
+const m={Jan:{},Feb:{},Mar:{}};g.forEach(r=>{if(m[r.Month])m[r.Month][r.Service]=parseInt(r.Growth)||0});
+new Chart(document.getElementById('c1'),{type:'line',data:{labels:['Jan','Feb','Mar'],datasets:[{label:'TELCORE',data:[m.Jan.TELCORE||0,m.Feb.TELCORE||0,m.Mar.TELCORE||0],borderColor:'#667eea',backgroundColor:'rgba(102,126,234,.1)',tension:.3},{label:'BBCORE',data:[m.Jan.BBCORE||0,m.Feb.BBCORE||0,m.Mar.BBCORE||0],borderColor:'#38ef7d',backgroundColor:'rgba(56,239,125,.1)',tension:.3},{label:'VCORE',data:[m.Jan.VCORE||0,m.Feb.VCORE||0,m.Mar.VCORE||0],borderColor:'#ff6b6b',backgroundColor:'rgba(255,107,107,.1)',tension:.3},{label:'SCORE',data:[m.Jan.SCORE||0,m.Feb.SCORE||0,m.Mar.SCORE||0],borderColor:'#ffa502',backgroundColor:'rgba(255,165,2,.1)',tension:.3}]},options:{responsive:true,maintainAspectRatio:true,plugins:{legend:{position:'top'}},scales:{y:{beginAtZero:true}}}});log("Done");dbg()}
+start()
+</script>
+</body>
+</html>
