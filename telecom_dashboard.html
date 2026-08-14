@@ -7,7 +7,7 @@
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5"></script>
 <style>
 body{font-family:Arial;background:#f5f5f5;padding:20px;margin:0}
-.container{max-width:1200px;margin:0 auto;background:white;padding:20px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,.1)}
+.container{max-width:1400px;margin:0 auto;background:white;padding:20px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,.1)}
 h1{color:#333;margin:0 0 5px 0}
 .sub{color:#666;font-size:.9em;margin-bottom:20px}
 button{background:#667eea;color:white;padding:10px 20px;border:none;border-radius:4px;cursor:pointer;margin:5px 5px 5px 0}
@@ -47,14 +47,15 @@ const MAP={'10-WKT-KY':'WKT ILEC','10-WKT-TN':'WKT ILEC','14-YORK':'WKT ILEC','2
 function log(m){LOG.push(`[${new Date().toLocaleTimeString()}] ${m}`);console.log(m)}
 function dbg(){document.getElementById('dbg').innerHTML=LOG.map(x=>`<div>${x}</div>`).join('')}
 async function get(f){log(`Fetch ${f}`);try{const r=await fetch(`${GH}/${f}?t=${Date.now()}`,{cache:'no-store'});if(!r.ok)throw new Error(`HTTP ${r.status}`);const t=await r.text();const p=Papa.parse(t,{header:true,skipEmptyLines:true});log(`${f}: ${p.data.length} rows`);return p.data}catch(e){log(`ERR ${f}: ${e.message}`);return[]}}
-async function start(){log("Init");const[s,d,g]=await Promise.all([get('telecom_summary.csv'),get('telecom_data_timeline.csv'),get('telecom_growth_metrics.csv')]);if(!s.length){document.getElementById('app').innerHTML='<div class="err">Failed to load data</div>';dbg();return}
+async function start(){log("Init");const[s,d,g]=await Promise.all([get('telecom_summary.csv'),get('telecom_data_timeline.csv'),get('telecom_growth_metrics.csv')]);if(!s.length||!d.length){document.getElementById('app').innerHTML='<div class="err">Failed to load data</div>';dbg();return}
 let h='';['TELCORE','BBCORE','VCORE','SCORE'].forEach(sv=>{const v=parseInt(s[0][sv])||0;const c=parseInt(s[0][sv+'_QTR_CHANGE'])||0;const p=(s[0][sv+'_QTR_PCT']||0);const cl=c>=0?'pos':'neg';h+=`<div class="kpi ${cl}"><div class="kpil">${sv}</div><div class="kpiv">${v.toLocaleString()}</div><div class="kpil">${c>=0?'+':''}${c} (${p}%)</div></div>`});
 h+='<div class="sec"><h2>Monthly Growth</h2><canvas id="c1"></canvas></div>';
-const ar={};d.forEach(r=>{const a=MAP[r.Class]||r.Class;if(!ar[a])ar[a]={TELCORE:0,BBCORE:0,VCORE:0,SCORE:0};['TELCORE','BBCORE','VCORE','SCORE'].forEach(sv=>ar[a][sv]+=parseInt(r[sv])||0)});
+const ar={};d.forEach(r=>{const cls=r.Class||'';const a=MAP[cls]||cls;if(!ar[a])ar[a]={TELCORE:0,BBCORE:0,VCORE:0,SCORE:0};const t=parseInt(r.TELCORE)||0;const b=parseInt(r.BBCORE)||0;const v=parseInt(r.VCORE)||0;const sc=parseFloat(r.SCORE)||0;ar[a].TELCORE+=t;ar[a].BBCORE+=b;ar[a].VCORE+=v;ar[a].SCORE+=sc});
+log(`Aggregated ${Object.keys(ar).length} service areas`);
 h+='<div class="sec"><h2>Daily Totals by Service Area</h2><table><tr><th>Area</th><th class="num">TELCORE</th><th class="num">BBCORE</th><th class="num">VCORE</th><th class="num">SCORE</th><th class="num">Total</th></tr>';
-Object.keys(ar).sort().forEach(a=>{const x=ar[a];const t=Object.values(x).reduce((a,b)=>a+b,0);h+=`<tr><td>${a}</td><td class="num">${x.TELCORE}</td><td class="num">${x.BBCORE}</td><td class="num">${x.VCORE}</td><td class="num">${x.SCORE}</td><td class="num"><b>${t}</b></td></tr>`});
+Object.keys(ar).sort().forEach(a=>{const x=ar[a];const t=Math.round(x.TELCORE+x.BBCORE+x.VCORE+x.SCORE);h+=`<tr><td>${a}</td><td class="num">${Math.round(x.TELCORE)}</td><td class="num">${Math.round(x.BBCORE)}</td><td class="num">${Math.round(x.VCORE)}</td><td class="num">${Math.round(x.SCORE)}</td><td class="num"><b>${t}</b></td></tr>`});
 h+='</table></div>';document.getElementById('app').innerHTML=h;document.getElementById('ts').textContent=`Updated: ${new Date().toLocaleString()}`;
-const m={Jan:{},Feb:{},Mar:{}};g.forEach(r=>{if(m[r.Month])m[r.Month][r.Service]=parseInt(r.Growth)||0});
+const m={Jan:{TELCORE:0,BBCORE:0,VCORE:0,SCORE:0},Feb:{TELCORE:0,BBCORE:0,VCORE:0,SCORE:0},Mar:{TELCORE:0,BBCORE:0,VCORE:0,SCORE:0}};g.forEach(r=>{const mo=r.Month||'';const mo_clean=mo.trim();if(m[mo_clean]){m[mo_clean][r.Service||'']=(parseInt(r.Growth)||0)}});log(`Monthly: Jan T=${m.Jan.TELCORE} B=${m.Jan.BBCORE} V=${m.Jan.VCORE} S=${m.Jan.SCORE}`);
 new Chart(document.getElementById('c1'),{type:'line',data:{labels:['Jan','Feb','Mar'],datasets:[{label:'TELCORE',data:[m.Jan.TELCORE||0,m.Feb.TELCORE||0,m.Mar.TELCORE||0],borderColor:'#667eea',backgroundColor:'rgba(102,126,234,.1)',tension:.3},{label:'BBCORE',data:[m.Jan.BBCORE||0,m.Feb.BBCORE||0,m.Mar.BBCORE||0],borderColor:'#38ef7d',backgroundColor:'rgba(56,239,125,.1)',tension:.3},{label:'VCORE',data:[m.Jan.VCORE||0,m.Feb.VCORE||0,m.Mar.VCORE||0],borderColor:'#ff6b6b',backgroundColor:'rgba(255,107,107,.1)',tension:.3},{label:'SCORE',data:[m.Jan.SCORE||0,m.Feb.SCORE||0,m.Mar.SCORE||0],borderColor:'#ffa502',backgroundColor:'rgba(255,165,2,.1)',tension:.3}]},options:{responsive:true,maintainAspectRatio:true,plugins:{legend:{position:'top'}},scales:{y:{beginAtZero:true}}}});log("Done");dbg()}
 start()
 </script>
